@@ -305,14 +305,20 @@ exports.curly = function (test) {
 
 /** Option `noempty` prohibits the use of empty blocks. */
 exports.noempty = function (test) {
-  var code = 'for (;;) {}';
+  var code = [
+    "for (;;) {}",
+    "if (true) {",
+    "}",
+    "foo();"
+  ];
 
   // By default, tolerate empty blocks since they are valid JavaScript
   TestRun(test).test(code, { es3: true });
 
   // Do not tolerate, when noempty is true
   TestRun(test)
-    .addError(1, 'Empty block.')
+    .addError(1, "Empty block.")
+    .addError(2, "Empty block.")
     .test(code, { es3: true, noempty: true });
 
   test.done();
@@ -529,6 +535,9 @@ exports.undef = function (test) {
     .addError(19, "'localUndef' is not defined.")
     .addError(21, "'localUndef' is not defined.")
     .addError(22, "'localUndef' is not defined.")
+    .addError(32, "'undef' is not defined.")
+    .addError(33, "'undef' is not defined.")
+    .addError(34, "'undef' is not defined.")
     .test(src, { es3: true, undef: true });
 
   // Regression test for GH-668.
@@ -538,6 +547,44 @@ exports.undef = function (test) {
 
   test.ok(JSHINT(src));
   test.ok(!JSHINT.data().implieds);
+
+  JSHINT("if (typeof foobar) {}", { undef: true });
+  test.ok(!JSHINT.data().implieds);
+
+  test.done();
+};
+
+exports.undefToOpMethods = function (test) {
+  TestRun(test)
+    .addError(2, "'undef' is not defined.")
+    .addError(3, "'undef' is not defined.")
+    .test([
+      "var obj;",
+      "obj.delete(undef);",
+      "obj.typeof(undef);"
+    ], { undef: true });
+
+  test.done();
+};
+
+/**
+ * In strict mode, the `delete` operator does not accept unresolvable
+ * references:
+ *
+ * http://es5.github.io/#x11.4.1
+ *
+ * This will only be apparent in cases where the user has suppressed warnings
+ * about deleting variables.
+ */
+exports.undefDeleteStrict = function (test) {
+  TestRun(test)
+    .addError(3, "'aNullReference' is not defined.")
+    .test([
+      "(function() {",
+      "  'use strict';",
+      "  delete aNullReference;",
+      "}());"
+    ], { undef: true, "-W051": false });
 
   test.done();
 };
@@ -1174,7 +1221,7 @@ exports.strings = function (test) {
     .addError(9, "Unclosed string.")
     .addError(10, "Unclosed string.")
     .addError(15, "Unclosed string.")
-    .addError(23, "Octal literals are not allowed in strict mode.")
+    .addError(25, "Octal literals are not allowed in strict mode.")
     .test(src, { es3: true, multistr: true });
 
   TestRun(test)
@@ -1184,7 +1231,7 @@ exports.strings = function (test) {
     .addError(10, "Unclosed string.")
     .addError(14, "Bad escaping of EOL. Use option multistr if needed.")
     .addError(15, "Unclosed string.")
-    .addError(23, "Octal literals are not allowed in strict mode.")
+    .addError(25, "Octal literals are not allowed in strict mode.")
     .test(src, { es3: true });
 
   test.done();
@@ -1716,6 +1763,43 @@ exports.singleGroups = function (test) {
       singleGroups: true,
       esnext: true
     });
+
+  test.done();
+};
+
+exports.elision = function (test) {
+  var code = [
+    "var a = [1,,2];",
+    "var b = [1,,,,2];",
+    "var c = [1,2,];",
+    "var d = [,1,2];",
+    "var e = [,,1,2];",
+  ];
+
+  TestRun(test, "elision=false ES5")
+    .addError(1, "Empty array elements require elision=true.")
+    .addError(2, "Empty array elements require elision=true.")
+    .addError(4, "Empty array elements require elision=true.")
+    .addError(5, "Empty array elements require elision=true.")
+    .test(code, { elision: false, es3: false });
+
+  TestRun(test, "elision=false ES3")
+    .addError(1, "Extra comma. (it breaks older versions of IE)")
+    .addError(2, "Extra comma. (it breaks older versions of IE)")
+    .addError(2, "Extra comma. (it breaks older versions of IE)")
+    .addError(2, "Extra comma. (it breaks older versions of IE)")
+    .addError(3, "Extra comma. (it breaks older versions of IE)")
+    .addError(4, "Extra comma. (it breaks older versions of IE)")
+    .addError(5, "Extra comma. (it breaks older versions of IE)")
+    .addError(5, "Extra comma. (it breaks older versions of IE)")
+    .test(code, { elision: false, es3: true });
+
+  TestRun(test, "elision=true ES5")
+    .test(code, { elision: true, es3: false });
+
+  TestRun(test, "elision=true ES3")
+    .addError(3, "Extra comma. (it breaks older versions of IE)")
+    .test(code, { elision: true, es3: true });
 
   test.done();
 };

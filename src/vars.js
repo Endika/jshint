@@ -79,6 +79,7 @@ exports.browser = {
   CustomEvent          : false,
   DOMParser            : false,
   defaultStatus        : false,
+  Document             : false,
   document             : false,
   Element              : false,
   ElementTimeControl   : false,
@@ -674,10 +675,12 @@ exports.mocha = {
   beforeEach  : false,
   afterEach   : false,
   // TDD
-  suite       : false,
-  test        : false,
-  setup       : false,
-  teardown    : false
+  suite         : false,
+  test          : false,
+  setup         : false,
+  teardown      : false,
+  suiteSetup    : false,
+  suiteTeardown : false
 };
 
 exports.jasmine = {
@@ -694,5 +697,11 @@ exports.jasmine = {
   // Jasmine 1.3
   runs        : false,
   waitsFor    : false,
-  waits       : false
+  waits       : false,
+  // Jasmine 2.1
+  beforeAll   : false,
+  afterAll    : false,
+  fail        : false,
+  fdescribe   : false,
+  fit         : false
 };

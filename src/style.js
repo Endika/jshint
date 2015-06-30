@@ -1,25 +1,28 @@
 "use strict";
 
-exports.register = function (linter) {
+exports.register = function(linter) {
   // Check for properties named __proto__. This special property was
   // deprecated and then re-introduced for ES6.
 
   linter.on("Identifier", function style_scanProto(data) {
-    if (linter.getOption("proto")) {
+    var esnext = linter.getOption("esnext");
+
+    if (linter.getOption("proto") || (esnext && linter.getOption("browser"))) {
       return;
     }
 
     if (data.name === "__proto__") {
-      linter.warn("W103", {
+      linter.warn(esnext ? "W135" : "W119", {
         line: data.line,
         char: data.char,
-        data: [ data.name ]
+        data: [ esnext ? "The '__proto__' property" : "__proto__" ]
       });
     }
   });
 
   // Check for properties named __iterator__. This is a special property
-  // available only in browsers with JavaScript 1.7 implementation.
+  // available only in browsers with JavaScript 1.7 implementation, but
+  // it is deprecated for ES6
 
   linter.on("Identifier", function style_scanIterator(data) {
     if (linter.getOption("iterator")) {
@@ -27,7 +30,7 @@ exports.register = function (linter) {
     }
 
     if (data.name === "__iterator__") {
-      linter.warn("W104", {
+      linter.warn("W103", {
         line: data.line,
         char: data.char,
         data: [ data.name ]
@@ -56,15 +59,9 @@ exports.register = function (linter) {
 
   linter.on("String", function style_scanQuotes(data) {
     var quotmark = linter.getOption("quotmark");
-    var esnext = linter.getOption("esnext");
     var code;
 
     if (!quotmark) {
-      return;
-    }
-
-    // If quotmark is enabled, return if this is a template literal.
-    if (esnext && data.quote === "`") {
       return;
     }
 

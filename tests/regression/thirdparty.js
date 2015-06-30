@@ -7,10 +7,13 @@ exports["Backbone.js 0.5.3"] = function (test) {
   var src = fs.readFileSync(__dirname + '/libs/backbone.js', 'utf8');
 
   TestRun(test)
+    .addError(32, "Unnecessary grouping operator.")
+    .addError(784, "Unnecessary grouping operator.")
+    .addError(864, "Unnecessary grouping operator.")
     .addError(685, "Missing '()' invoking a constructor.")
     .addError(764, "Use '===' to compare with '0'.")
     .addError(859, "Use '!==' to compare with '0'.")
-    .test(src, { expr: true, eqnull: true, boss: true, regexdash: true });
+    .test(src, { expr: true, eqnull: true, boss: true, regexdash: true, singleGroups: true });
 
   test.done();
 };
@@ -85,6 +88,7 @@ exports.prototype_1_7 = function (test) {
     .addError(2989, "'tagName' used out of scope.")
     .addError(2989, "'tagName' used out of scope.")
     .addError(2990, "'tagName' used out of scope.")
+    .addError(3827, "'getOffsetParent' is a function.")
     .addError(3844, "'positionedOffset' is a function.")
     .addError(3860, "'cumulativeOffset' is a function.")
     .addError(4036, "'ret' is already defined.")
@@ -113,7 +117,7 @@ exports.prototype_1_7 = function (test) {
     .addError(5224, "'values' is already defined.")
     .addError(5495, "Function declarations should not be placed in blocks. Use a function " +
       "expression or move the statement to the top of the outer function.")
-    .addError(5545, "The '__proto__' property is deprecated.")
+    .addError(5545, "'__proto__' is only available in ES6 (use esnext option).")
     .test(src, {
       sub      : true,
       lastsemic: true,
@@ -160,8 +164,6 @@ exports.lodash_0_6_1 = function (test) {
     .addError(1159, "'isArr' used out of scope.")
     .addError(1490, "Use '===' to compare with '0'.")
     .addError(1670, "Missing semicolon.")
-    .addError(2731, "'array' is already defined.")
-    .addError(2732, "'array' is a statement label.")
     .addError(3374, "Possible strict violation.")
     .addError(3377, "Missing '()' invoking a constructor.")
     .addError(3384, "Missing semicolon.")
@@ -182,7 +184,7 @@ exports.json2 = function (test) {
   TestRun(test)
     .addError(177, "'key' is defined but never used.")
     .addError(191, "'key' is defined but never used.")
-    .test(src, { undef: true, unused: true, laxbreak: true }, { JSON: true });
+    .test(src, { singleGroups: true, undef: true, unused: true, laxbreak: true, predef: ["-JSON"] }, { JSON: true });
 
   test.done();
 };
@@ -209,18 +211,11 @@ exports.codemirror3 = function (test) {
   };
 
   TestRun(test)
-    .addError(1157, "'result' is defined but never used.")
     .addError(1342, "Value of 'e' may be overwritten in IE 8 and earlier.")
     .addError(1526, "Value of 'e' may be overwritten in IE 8 and earlier.")
-    .addError(1532, "'mX' is defined but never used.")
-    .addError(1532, "'mY' is defined but never used.")
     .addError(1533, "Value of 'e' may be overwritten in IE 8 and earlier.")
-    .addError(2218, "'state' is defined but never used.")
-    .addError(2427, "'style' is defined but never used.")
-    .addError(2696, "'target' is defined but never used.")
     .addError(3168, "'ok' is defined but never used.")
     .addError(4093, "Unnecessary semicolon.")
-    .addError(4277, "'range' is defined but never used.")
     .test(src, opt, { CodeMirror: true });
 
   test.done();

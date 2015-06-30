@@ -6,7 +6,9 @@ import { one } from "foo";
 import { default as _ } from "underscore";
 import {} from "ember";
 import "ember";
-import * as ember from "ember";
+import * as ember2 from "ember";
+import _2, * as ember3 from "ember";
+import _3, { default as ember } from "ember";
 
 $.ajax();
 emGet("foo");
@@ -26,7 +28,8 @@ export default function() {
 }
 
 export { foo };
-export { foo, bar };
+export { foo, bar } from "source";
+export { foo, bar as biz } from "source";
 
 // gettin' fancy
 

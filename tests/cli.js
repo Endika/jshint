@@ -39,13 +39,42 @@ exports.group = {
   config: {
     setUp: function (done) {
       this.sinon.stub(shjs, "cat")
-        .withArgs(sinon.match(/file\.js$/)).returns("var a = function () {}; a();")
-        .withArgs(sinon.match(/file1\.json$/)).returns("wat")
-        .withArgs(sinon.match(/file2\.json$/)).returns("{\"node\":true,\"globals\":{\"foo\":true,\"bar\":true}}")
-        .withArgs(sinon.match(/file4\.json$/)).returns("{\"extends\":\"file3.json\"}")
-        .withArgs(sinon.match(/file5\.json$/)).returns("{\"extends\":\"file2.json\"}")
-        .withArgs(sinon.match(/file6\.json$/)).returns("{\"extends\":\"file2.json\",\"node\":false}")
-        .withArgs(sinon.match(/file7\.json$/)).returns("{\"extends\":\"file2.json\",\"globals\":{\"bar\":false,\"baz\":true}}");
+        .withArgs(sinon.match(/file\.js$/))
+          .returns("var a = function () {}; a();")
+        .withArgs(sinon.match(/file1\.json$/))
+          .returns("wat")
+        .withArgs(sinon.match(/file2\.json$/))
+          .returns("{\"node\":true,\"globals\":{\"foo\":true,\"bar\":true}}")
+        .withArgs(sinon.match(/file4\.json$/))
+          .returns("{\"extends\":\"file3.json\"}")
+        .withArgs(sinon.match(/file5\.json$/))
+          .returns("{\"extends\":\"file2.json\"}")
+        .withArgs(sinon.match(/file6\.json$/))
+          .returns("{\"extends\":\"file2.json\",\"node\":false}")
+        .withArgs(sinon.match(/file7\.json$/))
+          .returns("{\"extends\":\"file2.json\",\"globals\":{\"bar\":false,\"baz\":true}}")
+        .withArgs(sinon.match(/file8\.json$/)).returns(JSON.stringify({
+          extends: "file7.json",
+          overrides: {
+            "file.js": {
+              globals: {
+                foo: true,
+                bar: true
+              }
+            }
+          }
+        }))
+        .withArgs(sinon.match(/file9\.json$/)).returns(JSON.stringify({
+          extends: "file8.json",
+          overrides: {
+            "file.js": {
+              globals: {
+                baz: true,
+                bar: false
+              }
+            }
+          }
+        }));
 
       this.sinon.stub(shjs, "test")
         .withArgs("-e", sinon.match(/file\.js$/)).returns(true)
@@ -83,11 +112,23 @@ exports.group = {
         "node", "jshint", "file.js", "--config", "file2.json"
       ]);
 
-      // Performs a deep merge of "globals" configuration
+      // Performs a deep merge of configuration
       cli.interpret([
         "node", "jshint", "file2.js", "--config", "file7.json"
       ]);
       test.deepEqual(cli.run.lastCall.args[0].config.globals, { foo: true, bar: false, baz: true });
+
+      // Performs a deep merge of configuration with overrides
+      cli.interpret([
+        "node", "jshint", "file.js", "--config", "file8.json"
+      ]);
+      test.deepEqual(cli.run.lastCall.args[0].config.overrides["file.js"].globals, { foo: true, bar: true });
+
+      // Performs a deep merge of configuration with overrides for the same glob
+      cli.interpret([
+        "node", "jshint", "file.js", "--config", "file9.json"
+      ]);
+      test.deepEqual(cli.run.lastCall.args[0].config.overrides["file.js"].globals, { foo: true, bar: false, baz: true });
 
       test.done();
     },
@@ -116,7 +157,8 @@ exports.group = {
       } catch (err) {
         var msg = out.args[1][0];
         test.equal(msg.slice(0, 24), "Can't parse config file:");
-        test.equal(msg.slice(msg.length - 10), "file1.json");
+        test.equal(msg.slice(25, 35), "file1.json");
+        test.equal(msg.slice(msg.length - 37), "Error:SyntaxError: Unexpected token w");
         test.equal(err, "ProcessExit");
       }
 
@@ -416,6 +458,41 @@ exports.group = {
     test.equal(cli.exit.args[0][0], 0); // eval allowed = rc file found
 
     test.done();
+  },
+
+  testNoHomeDir: function (test) {
+    var prevEnv = {};
+
+    // Remove all home dirs from env.
+    [ 'USERPROFILE', 'HOME', 'HOMEPATH' ].forEach(function (key) {
+      prevEnv[key] = process.env[key];
+      delete process.env[key];
+    });
+
+    this.sinon.stub(process, "cwd").returns(__dirname);
+    var localRc = path.normalize(__dirname + "/.jshintrc");
+    var testStub = this.sinon.stub(shjs, "test");
+    var catStub = this.sinon.stub(shjs, "cat");
+
+    // stub rc file
+    testStub.withArgs("-e", localRc).returns(true);
+    catStub.withArgs(localRc).returns('{"evil": true}');
+
+    // stub src file
+    testStub.withArgs("-e", sinon.match(/file\.js$/)).returns(true);
+    catStub.withArgs(sinon.match(/file\.js$/)).returns("eval('a=2');");
+
+    cli.interpret([
+      "node", "jshint", "file.js"
+    ]);
+    test.equal(cli.exit.args[0][0], 0); // eval allowed = rc file found
+
+    test.done();
+
+    // Restore environemnt
+    Object.keys(prevEnv).forEach(function (key) {
+      process.env[key] = prevEnv[key];
+    });
   },
 
   testOneLevelRcLookup: function (test) {

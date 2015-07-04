@@ -2220,6 +2220,10 @@ var JSHINT = (function() {
     var p = expression(150);
     this.first = p;
 
+    if (!p) { // 'typeof' followed by nothing? Give up.
+      quit("E041", this.line || 0, this.character || 0);
+    }
+
     // The `typeof` operator accepts unresolvable references, so the operand
     // may be undefined.
     if (p.identifier) {
@@ -4540,14 +4544,15 @@ var JSHINT = (function() {
   // expression is a comprehension array, destructuring assignment or a json value.
 
   var lookupBlockType = function() {
-    var pn, pn1;
+    var pn, pn1, prev;
     var i = -1;
     var bracketStack = 0;
     var ret = {};
     if (checkPunctuators(state.tokens.curr, ["[", "{"]))
       bracketStack += 1;
     do {
-      pn = (i === -1) ? state.tokens.next : peek(i);
+      prev = i === -1 ? state.tokens.curr : pn;
+      pn = i === -1 ? state.tokens.next : peek(i);
       pn1 = peek(i + 1);
       i = i + 1;
       if (checkPunctuators(pn, ["[", "{"])) {
@@ -4555,7 +4560,8 @@ var JSHINT = (function() {
       } else if (checkPunctuators(pn, ["]", "}"])) {
         bracketStack -= 1;
       }
-      if (pn.identifier && pn.value === "for" && bracketStack === 1) {
+      if (pn.identifier && pn.value === "for" &&
+          !checkPunctuators(prev, ".") && bracketStack === 1) {
         ret.isCompArray = true;
         ret.notJson = true;
         break;
@@ -4570,7 +4576,7 @@ var JSHINT = (function() {
           break;
         }
       }
-      if (pn.value === ";") {
+      if (checkPunctuators(pn, [";"])) {
         ret.isBlock = true;
         ret.notJson = true;
       }

@@ -39,6 +39,12 @@ exports.other = function (test) {
     .addError(1, "Unrecoverable syntax error. (100% scanned).")
     .test("if (product < ) {}", {es3: true});
 
+  // GH-2506
+  TestRun(test)
+    .addError(1, "Expected an identifier and instead saw ';'.")
+    .addError(1, "Unrecoverable syntax error. (100% scanned).")
+    .test("typeof;");
+
   test.done();
 };
 
@@ -643,7 +649,8 @@ exports.ownProperty = function (test) {
   test.done();
 };
 
-exports.jsonMode = function (test) {
+exports.json = {};
+exports.json.dflt = function (test) {
   var code = [
     '{',
     '  a: 2,',
@@ -675,7 +682,7 @@ exports.jsonMode = function (test) {
   test.done();
 };
 
-exports.deepJSON = function (test) {
+exports.json.deep = function (test) {
   var code = [
     '{',
     '  "key" : {',
@@ -699,7 +706,7 @@ exports.deepJSON = function (test) {
   test.done();
 }
 
-exports.badJSON = function (test) {
+exports.json.errors = function (test) {
   var objTrailingComma = [
     '{ "key" : "value", }',
   ];
@@ -875,6 +882,17 @@ exports.badJSON = function (test) {
 
   test.done();
 }
+
+// Regression test for gh-2488
+exports.json.semicolon = function (test) {
+  TestRun(test)
+    .test("{ \"attr\": \";\" }");
+
+  TestRun(test)
+    .test("[\";\"]");
+
+  test.done();
+};
 
 exports.comma = function (test) {
   var src = fs.readFileSync(__dirname + "/fixtures/comma.js", "utf8");
@@ -3221,6 +3239,18 @@ exports["gh-1856 mistakenly identified as array comprehension"] = function (test
 
   TestRun(test)
     .test(code);
+
+  test.done();
+};
+
+exports["gh-1413 wrongly detected as array comprehension"] = function (test) {
+  var code = [
+    "var a = {};",
+    "var b = [ a.for ];"
+  ];
+
+  TestRun(test)
+    .test(code, { unused: false });
 
   test.done();
 };

@@ -6,7 +6,7 @@
 
 "use strict";
 
-var JSHINT = require('../../src/jshint.js').JSHINT;
+var JSHINT = require("../..").JSHINT;
 var fs = require('fs');
 var TestRun = require('../helpers/testhelper').setup.testRun;
 var fixture = require('../helpers/fixture').fixture;
@@ -112,12 +112,12 @@ exports.shadowEs6 = function (test) {
     [276, "'zb' has already been declared."],
     [286, "'zd' has already been declared."],
     [301, "'zf' has already been declared."],
+    [317, "'zi' has already been declared."],
     [344, "'zzi' has already been declared."],
     [345, "'zzj' has already been declared."],
-    [349, "'zzl' was used before it was declared, which is illegal for 'const' variables."],
     [349, "'zzl' has already been declared."],
-    [350, "'zzm' was used before it was declared, which is illegal for 'let' variables."],
-    [350, "'zzm' has already been declared."]
+    [350, "'zzm' has already been declared."],
+    [364, "'zj' has already been declared."]
   ];
 
   var innerErrors = [
@@ -173,9 +173,7 @@ exports.shadowEs6 = function (test) {
     [335, "'zzd' is already defined in outer scope."],
     [336, "'zze' is already defined in outer scope."],
     [337, "'zzf' is already defined in outer scope."],
-    [358, "'zzn' is already defined in outer scope."],
-    /* labels */
-    [317, "'zi' is already defined in outer scope."] // should always error
+    [358, "'zzn' is already defined in outer scope."]
   ];
 
   var testRun = TestRun(test);
@@ -233,6 +231,13 @@ exports.latedef = function (test) {
   TestRun(test)
     .addError(10, "'vr' was used before it was defined.")
     .test(src, { es3: true, latedef: "nofunc" });
+
+  // when latedef is true, jshint must not warn if variable is defined.
+  TestRun(test)
+    .test([
+      "if(true) { var a; }",
+      "if (a) { a(); }",
+      "var a;"], { es3: true, latedef: true});
 
   // When latedef_func is true, JSHint must not tolerate the use before definition for functions
   TestRun(test)
@@ -295,7 +300,7 @@ exports.notypeof = function (test) {
     .test(src, { notypeof: true, esnext: true });
 
   test.done();
-};
+}
 
 exports['combination of latedef and undef'] = function (test) {
   var src = fixture('latedefundef.js');
@@ -391,13 +396,13 @@ exports.testProtoAndIterator = function (test) {
   // JSHint should not allow the `__proto__` and
   // `__iterator__` properties by default
   TestRun(test)
-    .addError(7, "'__proto__' is only available in ES6 (use esnext option).")
-    .addError(8, "'__proto__' is only available in ES6 (use esnext option).")
-    .addError(10, "'__proto__' is only available in ES6 (use esnext option).")
+    .addError(7, "The '__proto__' property is deprecated.")
+    .addError(8, "The '__proto__' property is deprecated.")
+    .addError(10, "The '__proto__' property is deprecated.")
     .addError(27, "The '__iterator__' property is deprecated.")
-    .addError(33, "'__proto__' is only available in ES6 (use esnext option).")
-    .addError(37, "'__proto__' is only available in ES6 (use esnext option).")
-    .test(source, { es3: true });
+    .addError(33, "The '__proto__' property is deprecated.")
+    .addError(37, "The '__proto__' property is deprecated.")
+    .test(source, {es3: true});
 
   TestRun(test)
     .addError(1, "The '__proto__' key may produce unexpected results.")
@@ -408,19 +413,6 @@ exports.testProtoAndIterator = function (test) {
   // options are on
   TestRun("source").test(source, { es3: true, proto: true, iterator: true });
   TestRun("json").test(json, { es3: true, proto: true, iterator: true });
-
-  // Should not allow the `__proto__` property if esnext is on but browser is off.
-  TestRun(test)
-    .addError(7, "The '__proto__' property may not be supported by non-browser environments.")
-    .addError(8, "The '__proto__' property may not be supported by non-browser environments.")
-    .addError(10, "The '__proto__' property may not be supported by non-browser environments.")
-    .addError(33, "The '__proto__' property may not be supported by non-browser environments.")
-    .addError(37, "The '__proto__' property may not be supported by non-browser environments.")
-    .test(source, { esnext: true, iterator: true });
-
-  // Should allow the `__proto__` property if both esnext and browser are on
-  TestRun(test)
-    .test(source, { esnext: true, browser: true, iterator: true });
 
   test.done();
 };
@@ -635,7 +627,32 @@ exports.safeasi = function (test) {
     .addError(10, "Bad line breaking before '/'.")
     .addError(10, "Expected an identifier and instead saw '.'.")
     .addError(10, "Expected an assignment or function call and instead saw an expression.")
+    .addError(10, "Missing semicolon.")
     .test(src, { asi: true });
+
+  test.done();
+};
+
+exports["missing semicolons not influenced by asi"] = function (test) {
+  // These tests are taken from
+  // http://www.ecma-international.org/ecma-262/6.0/index.html#sec-11.9.2
+
+  var code = [
+    "void 0;", // Not JSON
+    "{ 1 2 } 3"
+  ];
+
+  TestRun(test)
+    .addError(2, "Missing semicolon.", { character: 4, code: "E058" })
+    .test(code, { expr: true, asi: true });
+
+  code = [
+    "void 0;",
+    "{ 1",
+    "2 } 3"
+  ];
+
+  TestRun(test).test(code, { expr: true, asi: true });
 
   test.done();
 };
@@ -719,11 +736,21 @@ exports.undef = function (test) {
 
   // block scope cannot use themselves in the declaration
   TestRun(test)
-    .addError(1, "'a' was used before it was declared, which is illegal for 'let' variables.")
-    .addError(2, "'b' was used before it was declared, which is illegal for 'const' variables.")
+    // JSHint does not currently enforce the correct temporal dead zone
+    // semantics in this case. Once this is fixed, the following errors
+    // should be thrown:
+    //.addError(1, "'a' was used before it was declared, which is illegal for 'let' variables.")
+    //.addError(2, "'b' was used before it was declared, which is illegal for 'const' variables.")
+    .addError(5, "'e' is already defined.")
     .test([
       'let a = a;',
-      'const b = b;'
+      'const b = b;',
+      'var c = c;',
+      'function f(e) {',
+      '  var e;',         // the var does not overwrite the param, the param is used
+      '  e = e || 2;',
+      '  return e;',
+      '}'
     ], { esnext: true, undef: true });
 
   // Regression test for GH-668.
@@ -735,7 +762,7 @@ exports.undef = function (test) {
   test.ok(!JSHINT.data().implieds);
 
   JSHINT("if (typeof foobar) {}", { undef: true });
-  console.log(JSHINT.data().implieds);
+
   test.strictEqual(JSHINT.data().implieds, undefined);
 
   test.done();
@@ -857,6 +884,64 @@ exports.unused = function (test) {
   test.ok(unused.some(function (err) { return err.line === 7 && err.character == 9 && err.name === "c"; }));
   test.ok(unused.some(function (err) { return err.line === 15 && err.character == 10 && err.name === "foo"; }));
   test.ok(unused.some(function (err) { return err.line === 68 && err.character == 5 && err.name === "y"; }));
+
+  test.done();
+};
+
+exports['param overrides function name expression'] = function (test) {
+  TestRun(test)
+    .test([
+      "var A = function B(B) {",
+      "  return B;",
+      "};",
+      "A();"
+    ], { undef: true, unused: "strict" });
+
+  test.done();
+};
+
+exports['let can re-use function and class name'] = function (test) {
+  TestRun(test)
+    .test([
+      "var A = function B(C) {",
+      "  let B = C;",
+      "  return B;",
+      "};",
+      "A();",
+      "var D = class E { constructor(F) { let E = F; return E; }};",
+      "D();"
+    ], { undef: true, unused: "strict", esnext: true });
+
+  test.done();
+};
+
+exports['unused with param destructuring'] = function(test) {
+  var code = [
+    "let b = ([...args], a) => a;",
+    "b = args => true;",
+    "b = function([...args], a) { return a; };",
+    "b = function([args], a) { return a; };",
+    "b = function({ args }, a) { return a; };",
+    "b = function({ a: args }, a) { return a; };",
+    "b = function({ a: [args] }, a) { return a; };",
+    "b = function({ a: [args] }, a) { return a; };"
+  ];
+
+  TestRun(test)
+    .addError(2, "'args' is defined but never used.")
+    .test(code, { esnext: true, unused: true });
+
+  TestRun(test)
+    .addError(1, "'args' is defined but never used.")
+    .addError(2, "'args' is defined but never used.")
+    .addError(3, "'args' is defined but never used.")
+    .addError(4, "'args' is defined but never used.")
+    .addError(5, "'args' is defined but never used.")
+    .addError(6, "'args' is defined but never used.")
+    .addError(7, "'args' is defined but never used.")
+    .addError(8, "'args' is defined but never used.")
+    .test(code, { esnext: true, unused: "strict" });
+
 
   test.done();
 };
@@ -1123,9 +1208,9 @@ exports.loopfunc = function (test) {
     .addError(8, "Don't make functions within a loop.")
     .addError(20, "Don't make functions within a loop.")
     .addError(25, "Don't make functions within a loop.")
-    .addError(30, "Don't make functions within a loop.")
     .addError(12, "Function declarations should not be placed in blocks. Use a function " +
             "expression or move the statement to the top of the outer function.")
+    .addError(42, "Don't make functions within a loop.")
     .test(src, {es3: true});
 
   // When loopfunc is true, only function declaration should fail.
@@ -1134,6 +1219,46 @@ exports.loopfunc = function (test) {
     .addError(12, "Function declarations should not be placed in blocks. Use a function " +
             "expression or move the statement to the top of the outer function.")
     .test(src, { es3: true, loopfunc: true });
+
+  var es6LoopFuncSrc = [
+    "for (var i = 0; i < 5; i++) {",
+    "  var y = w => i;",
+    "}",
+    "for (i = 0; i < 5; i++) {",
+    "  var z = () => i;",
+    "}",
+    "for (i = 0; i < 5; i++) {",
+    "  y = i => i;", // not capturing
+    "}",
+    "for (i = 0; i < 5; i++) {",
+    "  y = { a() { return i; } };",
+    "}",
+    "for (i = 0; i < 5; i++) {",
+    "  y = class { constructor() { this.i = i; }};",
+    "}",
+    "for (i = 0; i < 5; i++) {",
+    "  y = { a() { return () => i; } };",
+    "}"
+  ];
+  TestRun(test)
+    .addError(2, "Don't make functions within a loop.")
+    .addError(5, "Don't make functions within a loop.")
+    .addError(11, "Don't make functions within a loop.")
+    .addError(14, "Don't make functions within a loop.")
+    .addError(17, "Don't make functions within a loop.")
+    .test(es6LoopFuncSrc, {esnext: true});
+
+  // functions declared in the expressions that loop should warn
+  var src2 = [
+    "for(var i = 0; function a(){return i;}; i++) { break; }",
+    "var j;",
+    "while(function b(){return j;}){}",
+    "for(var c = function(){return j;};;){c();}"];
+
+  TestRun(test)
+    .addError(1, "Don't make functions within a loop.")
+    .addError(3, "Don't make functions within a loop.")
+    .test(src2, { es3: true, loopfunc: false, boss: true });
 
   test.done();
 };
@@ -1504,16 +1629,21 @@ exports.strict = function (test) {
   run.addError(1, 'Unnecessary directive "use strict".')
     .test(code3, { strict: "implied" });
 
-  [ true, false, "global", "implied" ].forEach(function(val) {
+  [ true, false, "global", "func", "implied" ].forEach(function(val) {
     JSHINT("/*jshint strict: " + val + " */");
     test.strictEqual(JSHINT.data().options.strict, val);
   });
-  JSHINT("/*jshint strict: func */");
-  test.strictEqual(JSHINT.data().options.strict, true);
 
   TestRun(test)
     .addError(1, "Bad option value.")
     .test("/*jshint strict: foo */");
+
+  TestRun(test, "environments have precedence over 'strict: true'")
+    .test(code3, { strict: true, node: true });
+
+  TestRun(test, "environments don't have precedence over 'strict: func'")
+    .addError(1, 'Use the function form of "use strict".')
+    .test(code3, { strict: "func", node: true });
 
   test.done();
 };
@@ -1968,17 +2098,37 @@ exports.maxparams = function (test) {
 
   TestRun(test)
     .addError(4, "This function has too many parameters. (3)")
-    .test(src, { es3: true, maxparams: 2 });
+    .addError(10, "This function has too many parameters. (3)")
+    .addError(16, "This function has too many parameters. (3)")
+    .test(src, { esnext: true, maxparams: 2 });
 
   TestRun(test)
-    .test(src, { es3: true, maxparams: 3 });
+    .test(src, { esnext: true, maxparams: 3 });
 
   TestRun(test)
     .addError(4, "This function has too many parameters. (3)")
-    .test(src, {es3: true, maxparams: 0 });
+    .addError(8, "This function has too many parameters. (1)")
+    .addError(9, "This function has too many parameters. (1)")
+    .addError(10, "This function has too many parameters. (3)")
+    .addError(11, "This function has too many parameters. (1)")
+    .addError(13, "This function has too many parameters. (2)")
+    .addError(16, "This function has too many parameters. (3)")
+    .test(src, {esnext: true, maxparams: 0 });
 
   TestRun(test)
-    .test(src, { es3: true });
+    .test(src, { esnext: true });
+
+  var functions = JSHINT.data().functions;
+  test.equal(functions.length, 9);
+  test.equal(functions[0].metrics.parameters, 0);
+  test.equal(functions[1].metrics.parameters, 3);
+  test.equal(functions[2].metrics.parameters, 0);
+  test.equal(functions[3].metrics.parameters, 1);
+  test.equal(functions[4].metrics.parameters, 1);
+  test.equal(functions[5].metrics.parameters, 3);
+  test.equal(functions[6].metrics.parameters, 1);
+  test.equal(functions[7].metrics.parameters, 2);
+  test.equal(functions[8].metrics.parameters, 3);
 
   test.done();
 };
@@ -2012,8 +2162,12 @@ exports.maxcomplexity = function (test) {
 exports.fnmetrics = function (test) {
   JSHINT([
     "function foo(a, b) { if (a) return b; }",
-    "function bar() { var a = 0; a += 1; return a; }"
+    "function bar() { var a = 0; a += 1; return a; }",
+    "function hasTryCatch() { try { } catch(e) { }}",
+    "try { throw e; } catch(e) {}"
   ]);
+
+  test.equal(JSHINT.data().functions.length, 3);
 
   test.deepEqual(JSHINT.data().functions[0].metrics, {
     complexity: 2,
@@ -2025,6 +2179,12 @@ exports.fnmetrics = function (test) {
     complexity: 1,
     parameters: 0,
     statements: 3
+  });
+
+  test.deepEqual(JSHINT.data().functions[2].metrics, {
+    complexity: 2,
+    parameters: 0,
+    statements: 1
   });
 
   test.done();
@@ -2511,6 +2671,84 @@ singleGroups.lineNumber = function (test) {
   test.done();
 };
 
+singleGroups.unary = function (test) {
+  var code = [
+    "(-3).toString();",
+    "(+3)[methodName]();",
+    "(!3).toString();",
+    "(~3).toString();",
+    "(typeof x).toString();",
+    "(new x).method();",
+
+    // Unnecessary:
+    "x = (-3) + 5;",
+    "x = (+3) - 5;",
+    "x = (!3) / 5;",
+    "x = (~3) << 5;",
+    "x = (typeof x) === 'undefined';",
+    "x = (new x) + 4;",
+  ];
+
+  TestRun(test)
+    .addError(6, "Missing '()' invoking a constructor.")
+    .addError(7, "Unnecessary grouping operator.")
+    .addError(8, "Unnecessary grouping operator.")
+    .addError(9, "Unnecessary grouping operator.")
+    .addError(10, "Unnecessary grouping operator.")
+    .addError(11, "Unnecessary grouping operator.")
+    .addError(12, "Unnecessary grouping operator.")
+    .addError(12, "Missing '()' invoking a constructor.")
+    .test(code, { singleGroups: true });
+
+  test.done();
+};
+
+singleGroups.numberLiterals = function (test) {
+  var code = [
+    "(3).toString();",
+    "(3.1).toString();",
+    "(.3).toString();",
+    "(3.).toString();",
+    "(1e3).toString();",
+    "(1e-3).toString();",
+    "(1.1e3).toString();",
+    "(1.1e-3).toString();",
+    "(3)[methodName]();",
+    "var x = (3) + 3;",
+    "('3').toString();"
+  ];
+
+  TestRun(test)
+    .addError(2, "Unnecessary grouping operator.")
+    .addError(3, "Unnecessary grouping operator.")
+    .addError(3, "A leading decimal point can be confused with a dot: '.3'.")
+    .addError(4, "Unnecessary grouping operator.")
+    .addError(4, "A trailing decimal point can be confused with a dot: '3.'.")
+    .addError(5, "Unnecessary grouping operator.")
+    .addError(6, "Unnecessary grouping operator.")
+    .addError(7, "Unnecessary grouping operator.")
+    .addError(8, "Unnecessary grouping operator.")
+    .addError(9, "Unnecessary grouping operator.")
+    .addError(10, "Unnecessary grouping operator.")
+    .addError(11, "Unnecessary grouping operator.")
+    .test(code, { singleGroups: true });
+
+  test.done();
+};
+
+singleGroups.postfix = function (test) {
+  var code = [
+    "var x;",
+    "(x++).toString();",
+    "(x--).toString();"
+  ];
+
+  TestRun(test)
+    .test(code, { singleGroups: true });
+
+  test.done();
+};
+
 exports.elision = function (test) {
   var code = [
     "var a = [1,,2];",
@@ -2741,7 +2979,8 @@ exports.varstmt = function (test) {
     "var fn = function() {",
     "  var x;",
     "  var y = 5;",
-    "};"
+    "};",
+    "for (var a in x);"
   ];
 
   TestRun(test)
@@ -2750,6 +2989,7 @@ exports.varstmt = function (test) {
     .addError(3, "`var` declarations are forbidden. Use `let` or `const` instead.")
     .addError(4, "`var` declarations are forbidden. Use `let` or `const` instead.")
     .addError(5, "`var` declarations are forbidden. Use `let` or `const` instead.")
+    .addError(7, "`var` declarations are forbidden. Use `let` or `const` instead.")
     .test(code, { varstmt: true });
 
   test.done();
@@ -2927,6 +3167,135 @@ exports.module.declarationRestrictions = function( test ) {
       "#!/usr/bin/env node",
       "/* jshint module: true */"
     ], { esnext: true });
+
+  TestRun(test, "Not re-applied with every directive (gh-2560)")
+    .test([
+      "/* jshint module:true */",
+      "function bar() {",
+      "  /* jshint validthis:true */",
+      "}"
+    ], { esnext: true });
+
+  test.done();
+};
+
+exports.esversion = function(test) {
+  var code = [
+    "// jshint esversion: 3",
+    "// jshint esversion: 4",
+    "// jshint esversion: 5",
+    "// jshint esversion: 6",
+    "// jshint esversion: 2015"
+  ];
+
+  TestRun(test, "Value")
+    .addError(2, "Bad option value.")
+    .test(code);
+
+  var es5code = [
+    "var a = {",
+    "  get b() {}",
+    "};"
+  ];
+
+  TestRun(test, "ES5 syntax as ES3")
+    .addError(2, "get/set are ES5 features.")
+    .test(es5code, { esversion: 3 });
+
+  TestRun(test, "ES5 syntax as ES5")
+    .test(es5code); // esversion: 5 (default)
+
+  TestRun(test, "ES5 syntax as ES6")
+    .test(es5code, { esversion: 6 });
+
+  var es6code = [
+    "var a = {",
+    "  ['b']: 1",
+    "};"
+  ];
+
+  TestRun(test, "ES6 syntax as ES3")
+    .addError(2, "'computed property names' is only available in ES6 (use 'esversion: 6').")
+    .test(es6code, { esversion: 3 });
+
+  TestRun(test, "ES6 syntax as ES5")
+    .addError(2, "'computed property names' is only available in ES6 (use 'esversion: 6').")
+    .test(es6code); // esversion: 5 (default)
+
+  TestRun(test, "ES6 syntax as ES6")
+    .test(es6code, { esversion: 6 });
+
+  // Array comprehensions aren't defined in ECMAScript 6,
+  // but they can be enabled using the `esnext` option
+  var arrayComprehension = [
+    "var a = [ 1, 2, 3 ];",
+    "var b = [ for (i of a) i ];"
+  ];
+
+  TestRun(test, "array comprehensions - esversion: 6")
+    .addError(2, "'array comprehension' is only available in Mozilla JavaScript extensions " +
+                 "(use moz option).")
+    .test(arrayComprehension, { esversion: 6 });
+
+  TestRun(test, "array comprehensions - esnext: true")
+    .test(arrayComprehension, { esnext: true });
+
+
+  TestRun(test, "precedence over `es3`") // TODO: Remove in JSHint 3
+    .test(es6code, { esversion: 6, es3: true });
+
+  TestRun(test, "precedence over `es5`") // TODO: Remove in JSHint 3
+    .addError(0, "ES5 option is now set per default")
+    .test(es6code, { esversion: 6, es5: true });
+
+  TestRun(test, "precedence over `esnext`") // TODO: Remove in JSHint 3
+    .addError(2, "'computed property names' is only available in ES6 (use 'esversion: 6').")
+    .test(es6code, { esversion: 3, esnext: true });
+
+  var code2 = [ // TODO: Remove in JSHint 3
+    "/* jshint esversion: 3, esnext: true */"
+  ].concat(es6code);
+
+  TestRun(test, "the last has the precedence (inline configuration)") // TODO: Remove in JSHint 3
+    .test(code2);
+
+  var code3 = [
+    "var someCode;",
+    "// jshint esversion: 3"
+  ];
+
+  TestRun(test, "cannot be set after any executable code")
+    .addError(2, "The 'esversion' option cannot be set after any executable code.")
+    .test(code3);
+
+  var code4 = [
+    "#!/usr/bin/env node",
+    "/**",
+    " * License",
+    " */",
+    "// jshint esversion: 3",
+    "// jshint esversion: 6"
+  ];
+
+  TestRun(test, "can follow shebang or comments")
+    .test(code4);
+
+  var code5 = [
+    "// jshint moz: true",
+    "// jshint esversion: 3",
+    "var x = {",
+    "  get a() {}",
+    "};",
+    "// jshint moz: true",
+    "var x = {",
+    "  get a() {}",
+    "};"
+  ];
+
+  TestRun(test, "correctly swap between moz and esversion")
+    .addError(4, "get/set are ES5 features.")
+    .test(code5);
+
 
   test.done();
 };

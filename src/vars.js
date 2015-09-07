@@ -367,6 +367,7 @@ exports.browser = {
   WebGLUniformLocation : false,
   WebSocket            : false,
   window               : false,
+  Window               : false,
   Worker               : false,
   XDomainRequest       : false,
   XMLHttpRequest       : false,
@@ -715,5 +716,6 @@ exports.jasmine = {
   afterAll    : false,
   fail        : false,
   fdescribe   : false,
-  fit         : false
+  fit         : false,
+  pending     : false
 };

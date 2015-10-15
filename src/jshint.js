@@ -210,6 +210,14 @@ var JSHINT = (function() {
       combine(predefined, vars.ecmaIdentifiers[6]);
     }
 
+    /**
+     * Use `in` to check for the presence of any explicitly-specified value for
+     * `globalstrict` because both `true` and `false` should trigger an error.
+     */
+    if (state.option.strict === "global" && "globalstrict" in state.option) {
+      error("E059", state.tokens.next, "strict", "globalstrict");
+    }
+
     if (state.option.module) {
       if (state.option.strict === true) {
         state.option.strict = "global";
@@ -833,7 +841,11 @@ var JSHINT = (function() {
       }
 
       if (state.tokens.next.isSpecial) {
-        doOption();
+        if (state.tokens.next.type === "falls through") {
+          state.tokens.curr.caseFallsThrough = true;
+        } else {
+          doOption();
+        }
       } else {
         if (state.tokens.next.id !== "(endline)") {
           break;
@@ -1667,7 +1679,9 @@ var JSHINT = (function() {
 
     r = expression(0, true);
 
-    if (r && (!r.identifier || r.value !== "function") && (r.type !== "(punctuator)")) {
+    if (r && !(r.identifier && r.value === "function") &&
+        !(r.type === "(punctuator)" && r.left &&
+          r.left.identifier && r.left.value === "function")) {
       if (!state.isStrict() &&
           state.option.strict === "global") {
         warning("E007");
@@ -4095,7 +4109,7 @@ var JSHINT = (function() {
           // You can tell JSHint that you don't use break intentionally by
           // adding a comment /* falls through */ on a line just before
           // the next `case`.
-          if (!reg.fallsThrough.test(state.lines[state.tokens.next.line - 2])) {
+          if (!state.tokens.curr.caseFallsThrough) {
             warning("W086", state.tokens.curr, "case");
           }
         }
@@ -4119,7 +4133,7 @@ var JSHINT = (function() {
           // Do not display a warning if 'default' is the first statement or if
           // there is a special /* falls through */ comment.
           if (this.cases.length) {
-            if (!reg.fallsThrough.test(state.lines[state.tokens.next.line - 2])) {
+            if (!state.tokens.curr.caseFallsThrough) {
               warning("W086", state.tokens.curr, "default");
             }
           }
@@ -5315,7 +5329,10 @@ var JSHINT = (function() {
         directives();
 
         if (state.directive["use strict"]) {
-          if (state.option.strict !== "global") {
+          if (state.option.strict !== "global" &&
+              !((state.option.strict === true || !state.option.strict) &&
+                (state.option.globalstrict || state.option.module || state.option.node ||
+                 state.option.phantom || state.option.browserify))) {
             warning("W097", state.tokens.prev);
           }
         }

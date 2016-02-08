@@ -123,9 +123,6 @@ function Lexer(source) {
   for (var i = 0; i < state.option.indent; i += 1) {
     state.tab += " ";
   }
-
-  // Blank out non-multi-line-commented lines when ignoring linter errors
-  this.ignoreLinterErrors = false;
 }
 
 Lexer.prototype = {
@@ -345,7 +342,7 @@ Lexer.prototype = {
     }
 
     // 2-character punctuators: <= >= == != ++ -- << >> && ||
-    // += -= *= %= &= |= ^= (but not /=, see below)
+    // += -= *= %= &= |= ^= /=
     if (ch1 === ch2 && ("+-<>&|".indexOf(ch1) >= 0)) {
       return {
         type: Token.Punctuator,
@@ -353,7 +350,7 @@ Lexer.prototype = {
       };
     }
 
-    if ("<>=!+-*%&|^".indexOf(ch1) >= 0) {
+    if ("<>=!+-*%&|^/".indexOf(ch1) >= 0) {
       if (ch2 === "=") {
         return {
           type: Token.Punctuator,
@@ -364,22 +361,6 @@ Lexer.prototype = {
       return {
         type: Token.Punctuator,
         value: ch1
-      };
-    }
-
-    // Special case: /=.
-
-    if (ch1 === "/") {
-      if (ch2 === "=") {
-        return {
-          type: Token.Punctuator,
-          value: "/="
-        };
-      }
-
-      return {
-        type: Token.Punctuator,
-        value: "/"
       };
     }
 
@@ -1468,14 +1449,9 @@ Lexer.prototype = {
     this.from = this.char;
 
     // Move to the next non-space character.
-    var start;
-    if (/\s/.test(this.peek())) {
-      start = this.char;
-
-      while (/\s/.test(this.peek())) {
-        this.from += 1;
-        this.skip();
-      }
+    while (/\s/.test(this.peek())) {
+      this.from += 1;
+      this.skip();
     }
 
     // Methods that work with multi-line structures and move the
@@ -1651,7 +1627,8 @@ Lexer.prototype = {
       }
 
       if (type === "(identifier)") {
-        if (value === "return" || value === "case" || value === "typeof") {
+        if (value === "return" || value === "case" ||
+            value === "typeof" || value === "instanceof") {
           this.prereg = true;
         }
 
@@ -1663,6 +1640,10 @@ Lexer.prototype = {
             obj = null;
           }
         }
+      }
+
+      if (type === "(template)" || type === "(template middle)") {
+        this.prereg = true;
       }
 
       if (!obj) {

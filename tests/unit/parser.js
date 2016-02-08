@@ -45,6 +45,10 @@ exports.other = function (test) {
     .addError(1, "Unrecoverable syntax error. (100% scanned).")
     .test("typeof;");
 
+  TestRun(test)
+    .addError(1, "Unrecoverable syntax error. (0% scanned).")
+    .test("}");
+
   test.done();
 };
 
@@ -488,10 +492,11 @@ exports.regexp = function (test) {
     "var s = /(((/;",
     "var t = /x/* 2;",
     "var u = /x/;",
-    "var v = /dsdg;",
     "var w = v + /s/;",
     "var x = w - /s/;",
-    "var y = typeof /[a-z]/;" // GH-657
+    "var y = typeof /[a-z]/;", // GH-657
+    "var z = /a/ instanceof /a/.constructor;", // GH-2773
+    "var v = /dsdg;"
   ];
 
   var run = TestRun(test)
@@ -510,13 +515,15 @@ exports.regexp = function (test) {
     .addError(17, "Invalid regular expression.")
     .addError(20, "Invalid regular expression.")
     .addError(21, "Invalid regular expression.")
-    .addError(24, "Unclosed regular expression.")
-    .addError(24, "Unrecoverable syntax error. (88% scanned).");
+    .addError(28, "Unclosed regular expression.")
+    .addError(28, "Unrecoverable syntax error. (100% scanned).");
 
   run.test(code, {es3: true});
   run.test(code, {}); // es5
   run.test(code, {esnext: true});
   run.test(code, {moz: true});
+
+  TestRun(test).test("var a = `${/./}${/./}`;", { esversion: 6 });
 
 
   // Pre Regular Expression Punctuation
@@ -2969,7 +2976,6 @@ exports["make sure var variables can shadow let variables"] = function (test) {
     .addError(1, "'a' is defined but never used.")
     .addError(2, "'b' is defined but never used.")
     .addError(3, "'c' is defined but never used.")
-    .addError(9, "'d' is defined but never used.")
     .addError(9, "'d' has already been declared.")
     .test(code, { esnext: true, unused: true, undef: true, funcscope: true });
 
@@ -5939,6 +5945,24 @@ exports["class method this"] = function (test) {
   test.done();
 };
 
+exports.classNewcap = function (test) {
+  var code = [
+    "class C {",
+    "  m() {",
+    "    var ctor = function() {};",
+    "    var Ctor = function() {};",
+    "    var c1 = new ctor();",
+    "    var c2 = Ctor();",
+    "  }",
+    "}"
+  ];
+
+  TestRun(test, "The `newcap` option is not automatically enabled within class bodies.")
+    .test(code, { esversion: 6 });
+
+  test.done();
+};
+
 exports.classExpression = function (test) {
   var code = [
     "void class MyClass {",
@@ -7379,6 +7403,36 @@ exports.lazyIdentifierChecks = function (test) {
   TestRun(test)
     .addError(8, "The '__proto__' property is deprecated.")
     .addError(9, "The '__iterator__' property is deprecated.")
+    .test(src);
+
+  test.done();
+};
+
+exports.parsingCommas = function (test) {
+  var src = fs.readFileSync(__dirname + '/fixtures/parsingCommas.js', 'utf8');
+
+  TestRun(test)
+    .addError(2, "Unexpected ','.")
+    .addError(2, "Comma warnings can be turned off with 'laxcomma'.")
+    .addError(1, "Bad line breaking before ','.")
+    .addError(2, "Expected an identifier and instead saw ';'.")
+    .addError(2, "Expected an identifier and instead saw ')'.")
+    .addError(2, "Expected ';' and instead saw '{'.")
+    .addError(2, "Expected an identifier and instead saw '}'.")
+    .addError(5, "Expected ')' to match '(' from line 1 and instead saw 'for'.")
+    .addError(5, "Expected an identifier and instead saw ';'.")
+    .addError(5, "Expected ')' to match '(' from line 5 and instead saw ';'.")
+    .addError(5, "Expected an assignment or function call and instead saw an expression.")
+    .addError(5, "Missing semicolon.")
+    .addError(6, "Unexpected ','.")
+    .addError(5, "Expected an assignment or function call and instead saw an expression.")
+    .addError(5, "Missing semicolon.")
+    .addError(6, "Expected an identifier and instead saw ','.")
+    .addError(6, "Expected an assignment or function call and instead saw an expression.")
+    .addError(6, "Missing semicolon.")
+    .addError(6, "Expected an identifier and instead saw ')'.")
+    .addError(6, "Expected an assignment or function call and instead saw an expression.")
+    .addError(6, "Missing semicolon.")
     .test(src);
 
   test.done();

@@ -187,19 +187,15 @@ var JSHINT = (function() {
   }
 
   function assume() {
+    var badESOpt = null;
     processenforceall();
 
     /**
      * TODO: Remove in JSHint 3
      */
-    if (!state.option.esversion && !state.option.moz) {
-      if (state.option.es3) {
-        state.option.esversion = 3;
-      } else if (state.option.esnext) {
-        state.option.esversion = 6;
-      } else {
-        state.option.esversion = 5;
-      }
+    badESOpt = state.inferEsVersion();
+    if (badESOpt) {
+      quit("E059", state.tokens.next, "esversion", badESOpt);
     }
 
     if (state.inES5()) {
@@ -215,13 +211,10 @@ var JSHINT = (function() {
      * `globalstrict` because both `true` and `false` should trigger an error.
      */
     if (state.option.strict === "global" && "globalstrict" in state.option) {
-      error("E059", state.tokens.next, "strict", "globalstrict");
+      quit("E059", state.tokens.next, "strict", "globalstrict");
     }
 
     if (state.option.module) {
-      if (state.option.strict === true) {
-        state.option.strict = "global";
-      }
       /**
        * TODO: Extend this restriction to *all* ES6-specific options.
        */
@@ -252,9 +245,6 @@ var JSHINT = (function() {
 
     if (state.option.phantom) {
       combine(predefined, vars.phantom);
-      if (state.option.strict === true) {
-        state.option.strict = "global";
-      }
     }
 
     if (state.option.prototypejs) {
@@ -264,9 +254,6 @@ var JSHINT = (function() {
     if (state.option.node) {
       combine(predefined, vars.node);
       combine(predefined, vars.typed);
-      if (state.option.strict === true) {
-        state.option.strict = "global";
-      }
     }
 
     if (state.option.devel) {
@@ -286,9 +273,6 @@ var JSHINT = (function() {
       combine(predefined, vars.browser);
       combine(predefined, vars.typed);
       combine(predefined, vars.browserify);
-      if (state.option.strict === true) {
-        state.option.strict = "global";
-      }
     }
 
     if (state.option.nonstandard) {
@@ -315,10 +299,6 @@ var JSHINT = (function() {
       combine(predefined, vars.wsh);
     }
 
-    if (state.option.globalstrict && state.option.strict !== false) {
-      state.option.strict = "global";
-    }
-
     if (state.option.yui) {
       combine(predefined, vars.yui);
     }
@@ -329,18 +309,25 @@ var JSHINT = (function() {
   }
 
   // Produce an error warning.
-  function quit(code, line, chr) {
-    var percentage = Math.floor((line / state.lines.length) * 100);
+  function quit(code, token, a, b) {
+    var percentage = Math.floor((token.line / state.lines.length) * 100);
     var message = messages.errors[code].desc;
 
-    throw {
+    var exception = {
       name: "JSHintError",
-      line: line,
-      character: chr,
+      line: token.line,
+      character: token.from,
       message: message + " (" + percentage + "% scanned).",
       raw: message,
-      code: code
+      code: code,
+      a: a,
+      b: b
     };
+
+    exception.reason = supplant(message, exception) + " (" + percentage +
+      "% scanned).";
+
+    throw exception;
   }
 
   function removeIgnoredMessages() {
@@ -369,8 +356,8 @@ var JSHINT = (function() {
       t = state.tokens.curr;
     }
 
-    l = t.line || 0;
-    ch = t.from || 0;
+    l = t.line;
+    ch = t.from;
 
     w = {
       id: "(error)",
@@ -392,7 +379,7 @@ var JSHINT = (function() {
     removeIgnoredMessages();
 
     if (JSHINT.errors.length >= state.option.maxerr)
-      quit("E043", l, ch);
+      quit("E043", t);
 
     return w;
   }
@@ -648,7 +635,6 @@ var JSHINT = (function() {
           case "false":
             state.option.strict = false;
             break;
-          case "func":
           case "global":
           case "implied":
             state.option.strict = val;
@@ -666,31 +652,6 @@ var JSHINT = (function() {
           if (!hasParsedCode(state.funct)) {
             error("E055", state.tokens.next, "module");
           }
-        }
-
-        /**
-         * TODO: Remove in JSHint 3
-         */
-        var esversions = {
-          es3   : 3,
-          es5   : 5,
-          esnext: 6
-        };
-        if (_.has(esversions, key)) {
-          switch (val) {
-          case "true":
-            state.option.moz = false;
-            state.option.esversion = esversions[key];
-            break;
-          case "false":
-            if (!state.option.moz) {
-              state.option.esversion = 5;
-            }
-            break;
-          default:
-            error("E002", nt);
-          }
-          return;
         }
 
         if (key === "esversion") {
@@ -738,9 +699,6 @@ var JSHINT = (function() {
             state.option[key] = (val === "true");
           }
 
-          if (key === "newcap") {
-            state.option["(explicitNewcap)"] = true;
-          }
           return;
         }
 
@@ -829,7 +787,7 @@ var JSHINT = (function() {
       state.tokens.next = lookahead.shift() || lex.token();
 
       if (!state.tokens.next) { // No more tokens left, give up
-        quit("E041", state.tokens.curr.line);
+        quit("E041", state.tokens.curr);
       }
 
       if (state.tokens.next.id === "(end)" || state.tokens.next.id === "(error)") {
@@ -935,9 +893,7 @@ var JSHINT = (function() {
         error("E030", state.tokens.curr, state.tokens.curr.id);
       }
 
-      // TODO: use pratt mechanics rather than special casing template tokens
-      while ((rbp < state.tokens.next.lbp || state.tokens.next.type === "(template)") &&
-              !isEndOfExpr()) {
+      while (rbp < state.tokens.next.lbp && !isEndOfExpr()) {
         isArray = state.tokens.curr.value === "Array";
         isObject = state.tokens.curr.value === "Object";
 
@@ -1010,16 +966,16 @@ var JSHINT = (function() {
   function nobreakcomma(left, right) {
     if (left.line !== startLine(right)) {
       if (!state.option.laxcomma) {
-        if (comma.first) {
+        if (parseComma.first) {
           warning("I001");
-          comma.first = false;
+          parseComma.first = false;
         }
         warning("W014", left, right.value);
       }
     }
   }
 
-  function comma(opts) {
+  function parseComma(opts) {
     opts = opts || {};
 
     if (!opts.peek) {
@@ -1237,7 +1193,7 @@ var JSHINT = (function() {
       }
 
       if (!left || !right) {
-        quit("E041", state.tokens.curr.line);
+        quit("E041", state.tokens.curr);
       }
 
       if (left.id === "!") {
@@ -1343,8 +1299,10 @@ var JSHINT = (function() {
       while (!obj.identifier && typeof obj.left === "object")
         obj = obj.left;
 
-      if (obj.identifier && natives.indexOf(obj.value) >= 0)
+      if (obj.identifier && natives.indexOf(obj.value) >= 0 &&
+          state.funct["(scope)"].isPredefined(obj.value)) {
         return obj.value;
+      }
     }
 
     var prototype = walkPrototype(left);
@@ -1682,8 +1640,7 @@ var JSHINT = (function() {
     if (r && !(r.identifier && r.value === "function") &&
         !(r.type === "(punctuator)" && r.left &&
           r.left.identifier && r.left.value === "function")) {
-      if (!state.isStrict() &&
-          state.option.strict === "global") {
+      if (!state.isStrict() && state.stmtMissingStrict()) {
         warning("E007");
       }
     }
@@ -1776,9 +1733,6 @@ var JSHINT = (function() {
     }
 
     if (state.isStrict()) {
-      if (!state.option["(explicitNewcap)"]) {
-        state.option.newcap = true;
-      }
       state.option.undef = true;
     }
   }
@@ -1986,11 +1940,11 @@ var JSHINT = (function() {
   };
 
   var baseTemplateSyntax = {
-    lbp: 0,
     identifier: false,
     template: true,
   };
   state.syntax["(template)"] = _.extend({
+    lbp: 155,
     type: "(template)",
     nud: doTemplateLiteral,
     led: doTemplateLiteral,
@@ -1998,18 +1952,21 @@ var JSHINT = (function() {
   }, baseTemplateSyntax);
 
   state.syntax["(template middle)"] = _.extend({
+    lbp: 0,
     type: "(template middle)",
     middle: true,
     noSubst: false
   }, baseTemplateSyntax);
 
   state.syntax["(template tail)"] = _.extend({
+    lbp: 0,
     type: "(template tail)",
     tail: true,
     noSubst: false
   }, baseTemplateSyntax);
 
   state.syntax["(no subst template)"] = _.extend({
+    lbp: 155,
     type: "(template)",
     nud: doTemplateLiteral,
     led: doTemplateLiteral,
@@ -2024,7 +1981,9 @@ var JSHINT = (function() {
   // ECMAScript parser
 
   delim("(endline)");
-  delim("(begin)");
+  (function(x) {
+    x.line = x.from = 0;
+  })(delim("(begin)"));
   delim("(end)").reach = true;
   delim("(error)").reach = true;
   delim("}").reach = true;
@@ -2083,7 +2042,7 @@ var JSHINT = (function() {
       warning("W127");
     }
 
-    if (!comma({ peek: true })) {
+    if (!parseComma({ peek: true })) {
       return that;
     }
     while (true) {
@@ -2091,7 +2050,7 @@ var JSHINT = (function() {
         break;
       }
       that.exprs.push(expr);
-      if (state.tokens.next.value !== "," || !comma()) {
+      if (state.tokens.next.value !== "," || !parseComma()) {
         break;
       }
     }
@@ -2319,7 +2278,7 @@ var JSHINT = (function() {
     this.right = expression(150);
 
     if (!this.right) { // '!' followed by nothing? Give up.
-      quit("E041", this.line || 0);
+      quit("E041", this);
     }
 
     if (bang[this.right.id] === true) {
@@ -2333,7 +2292,7 @@ var JSHINT = (function() {
     this.first = this.right = p;
 
     if (!p) { // 'typeof' followed by nothing? Give up.
-      quit("E041", this.line || 0, this.character || 0);
+      quit("E041", this);
     }
 
     // The `typeof` operator accepts unresolvable references, so the operand
@@ -2476,7 +2435,7 @@ var JSHINT = (function() {
         if (state.tokens.next.id !== ",") {
           break;
         }
-        comma();
+        parseComma();
       }
     }
 
@@ -2566,7 +2525,7 @@ var JSHINT = (function() {
           warning("W127");
         }
 
-        comma();
+        parseComma();
       }
     }
 
@@ -2765,7 +2724,7 @@ var JSHINT = (function() {
 
       this.first.push(expression(10));
       if (state.tokens.next.id === ",") {
-        comma({ allowTrailing: true });
+        parseComma({ allowTrailing: true });
         if (state.tokens.next.id === "]" && !state.inES5()) {
           warning("W070", state.tokens.curr);
           break;
@@ -2917,7 +2876,7 @@ var JSHINT = (function() {
         if (pastRest) {
           warning("W131", state.tokens.next);
         }
-        comma();
+        parseComma();
       } else {
         advance(")", next);
         return { arity: arity, params: paramsIds };
@@ -3340,7 +3299,7 @@ var JSHINT = (function() {
         countMember(i);
 
         if (state.tokens.next.id === ",") {
-          comma({ allowTrailing: true, property: true });
+          parseComma({ allowTrailing: true, property: true });
           if (state.tokens.next.id === ",") {
             warning("W070", state.tokens.curr);
           } else if (state.tokens.next.id === "}" && !state.inES5()) {
@@ -3617,7 +3576,7 @@ var JSHINT = (function() {
       if (state.tokens.next.id !== ",") {
         break;
       }
-      comma();
+      parseComma();
     }
     if (letblock) {
       advance(")");
@@ -3726,7 +3685,7 @@ var JSHINT = (function() {
       if (state.tokens.next.id !== ",") {
         break;
       }
-      comma();
+      parseComma();
     }
 
     return this;
@@ -3894,7 +3853,7 @@ var JSHINT = (function() {
     var generator = false;
     if (state.tokens.next.value === "*") {
       advance("*");
-      if (state.inES6({ strict: true })) {
+      if (state.inES6(true)) {
         generator = true;
       } else {
         warning("W119", state.tokens.curr, "function*", "6");
@@ -4349,7 +4308,7 @@ var JSHINT = (function() {
             if (state.tokens.next.id !== ",") {
               break;
             }
-            comma();
+            parseComma();
           }
         }
       }
@@ -4373,7 +4332,7 @@ var JSHINT = (function() {
           if (state.tokens.next.id !== ",") {
             break;
           }
-          comma();
+          parseComma();
         }
       }
       advance(")", t);
@@ -5178,11 +5137,8 @@ var JSHINT = (function() {
           newOptionObj[optionKey] = o[optionKey];
           if ((optionKey === "esversion" && o[optionKey] === 5) ||
               (optionKey === "es5" && o[optionKey])) {
-            warning("I003");
+            warningAt("I003", 0, 0);
           }
-
-          if (optionKeys[x] === "newcap" && o[optionKey] === false)
-            newOptionObj["(explicitNewcap)"] = true;
         }
       }
     }
@@ -5292,7 +5248,7 @@ var JSHINT = (function() {
     });
 
     lex.on("fatal", function(ev) {
-      quit("E041", ev.line, ev.from);
+      quit("E041", ev);
     });
 
     lex.on("Identifier", function(ev) {
@@ -5316,15 +5272,15 @@ var JSHINT = (function() {
       }
     }
 
-    assume();
-
-    // combine the passed globals after we've assumed all our options
-    combine(predefined, g || {});
-
-    //reset values
-    comma.first = true;
-
     try {
+      assume();
+
+      // combine the passed globals after we've assumed all our options
+      combine(predefined, g || {});
+
+      //reset values
+      parseComma.first = true;
+
       advance();
       switch (state.tokens.next.id) {
       case "{":
@@ -5335,10 +5291,7 @@ var JSHINT = (function() {
         directives();
 
         if (state.directive["use strict"]) {
-          if (state.option.strict !== "global" &&
-              !((state.option.strict === true || !state.option.strict) &&
-                (state.option.globalstrict || state.option.module || state.option.node ||
-                 state.option.phantom || state.option.browserify))) {
+          if (!state.allowsGlobalUsd()) {
             warning("W097", state.tokens.prev);
           }
         }
@@ -5347,7 +5300,7 @@ var JSHINT = (function() {
       }
 
       if (state.tokens.next.id !== "(end)") {
-        quit("E041", state.tokens.curr.line);
+        quit("E041", state.tokens.curr);
       }
 
       state.funct["(scope)"].unstack();
@@ -5359,7 +5312,7 @@ var JSHINT = (function() {
           scope     : "(main)",
           raw       : err.raw,
           code      : err.code,
-          reason    : err.message,
+          reason    : err.reason,
           line      : err.line || nt.line,
           character : err.character || nt.from
         }, null);
